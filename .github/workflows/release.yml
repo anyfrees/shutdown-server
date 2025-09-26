@@ -1,27 +1,35 @@
-name: Build & Release Electron App
+name: Build Electron App
 
+# 触发条件：
+# 1. 当有代码推送到 main 分支时
+# 2. 允许在 GitHub Actions 页面手动触发
 on:
-  release:
-    types: [created]
+  push:
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
-  # 第一步：在各个平台上构建应用
   build:
+    # 在 Windows, macOS, 和 Linux 三个平台上并行运行
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
+      # 第1步：检出您的代码
       - name: Check out git repository
         uses: actions/checkout@v4
 
+      # 第2步：设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
+      # 第3步：安装依赖（针对不同平台）
       - name: Install dependencies on Linux
         if: runner.os == 'Linux'
         run: |
@@ -33,40 +41,16 @@ jobs:
         if: runner.os != 'Linux'
         run: npm ci
 
+      # 第4步：执行打包和构建命令
       - name: Build distributable
         run: npm run make
-
-      - name: List build artifacts for debugging
-        run: ls -R ./out/make
       
+      # 第5步：将生成的安装包作为临时附件(Artifact)上传
+      # 您可以在工作流运行结束后下载这些附件
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-build
+          # 为每个平台的附件创建一个清晰的名称
+          name: ${{ github.event.repository.name }}-${{ matrix.os }}-build
+          # 上传 out/make 目录下的所有内容
           path: ./out/make/**/*
-
-  # 第二步：等待所有构建成功后，统一发布
-  release:
-    # 依赖于 build 任务成功完成
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # 必须有写入权限来创建Release和上传附件
-
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./artifacts # 将所有平台的产物下载到 artifacts 文件夹
-
-      - name: List downloaded artifacts for debugging
-        run: ls -R ./artifacts
-
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
-        with:
-          # 从下载的附件中查找所有平台的文件并上传
-          # 这会自动处理 .exe, .zip, .deb, .dmg 等所有文件
-          files: ./artifacts/**/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
