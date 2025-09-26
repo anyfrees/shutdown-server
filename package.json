@@ -1,0 +1,35 @@
+{
+  "name": "electron-shutdown-server",
+  "version": "1.0.0",
+  "description": "A modern server to manage remote clients.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "build:css": "tailwindcss -i ./src/renderer/tailwind-input.css -o ./src/renderer/style.css",
+    "watch:css": "npm run build:css -- --watch",
+    "dev": "npm run watch:css & npm start",
+    "package": "electron-forge package",
+    "make": "electron-forge make"
+  },
+  "keywords": [],
+  "author": "ChengKai",
+  "license": "ISC",
+  "devDependencies": {
+    "@electron-forge/cli": "^7.9.0",
+    "@electron-forge/maker-deb": "^7.9.0",
+    "@electron-forge/maker-rpm": "^7.9.0",
+    "@electron-forge/maker-squirrel": "^7.9.0",
+    "@electron-forge/maker-zip": "^7.9.0",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.9.0",
+    "@electron-forge/plugin-fuses": "^7.9.0",
+    "@electron/fuses": "^1.8.0",
+    "electron": "^28.0.0",
+    "tailwindcss": "^3.4.1"
+  },
+  "dependencies": {
+    "cron-parser": "^5.4.0",
+    "electron-squirrel-startup": "^1.0.1",
+    "sqlite3": "^5.1.7",
+    "wol": "^1.0.0"
+  }
+}
