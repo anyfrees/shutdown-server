@@ -1,37 +1,27 @@
 name: Build & Release Electron App
 
-# 触发条件：仅当您在GitHub上手动创建一个新的 "Release" 时，此工作流才会运行。
 on:
   release:
     types: [created]
 
 jobs:
   build-and-release:
-    # 使用矩阵策略，同时在 Windows, macOS, 和 Linux 三个平台上运行
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
-    # 指定运行环境
     runs-on: ${{ matrix.os }}
 
     steps:
-      # 第1步：检出您的代码
-      # 拉取您仓库的最新代码到虚拟机上
       - name: Check out git repository
         uses: actions/checkout@v4
 
-      # 第2步：设置 Node.js 环境
-      # 安装 Node.js，这是运行项目所必需的
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18' # 建议使用一个LTS版本
+          node-version: '18'
           cache: 'npm'
-
-      # 第3步：安装依赖
-      # 运行 npm ci 会根据 package-lock.json 安装所有依赖，速度更快且更稳定
-      # 对于 Linux，可能需要预先安装一些原生模块的编译工具
+      
       - name: Install dependencies on Linux
         if: runner.os == 'Linux'
         run: |
@@ -43,23 +33,43 @@ jobs:
         if: runner.os != 'Linux'
         run: npm ci
 
-      # 第4步：执行打包和构建命令
-      # 运行 electron-forge make 来创建安装包
       - name: Build distributable
         run: npm run make
+      
+      # 新增：调试步骤，列出打包后的产物，方便排查问题
+      - name: List build artifacts
+        if: always() # 即使上一步失败也运行，以便我们看到部分产物
+        run: ls -R ./out
 
-      # 第5步：上传构建好的安装包到 Release
-      # 这是一个关键步骤，它会自动将生成的安装文件附加到您创建的Release上
+      # 优化：智能查找不同平台生成的安装包路径和名称
+      - name: Get Artifact Info
+        id: get_artifact_info
+        shell: bash
+        run: |
+          ARTIFACT_PATH=""
+          ARTIFACT_NAME=""
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ARTIFACT_PATH=$(find ./out/make -name "*.exe" | head -n 1)
+            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-windows-setup.exe"
+          fi
+          if [[ "${{ runner.os }}" == "macOS" ]]; then
+            ARTIFACT_PATH=$(find ./out/make -name "*.zip" | head -n 1)
+            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-macos.zip"
+          fi
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            ARTIFACT_PATH=$(find ./out/make -name "*.deb" | head -n 1)
+            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-linux.deb"
+          fi
+          echo "ARTIFACT_PATH=${ARTIFACT_PATH}" >> $GITHUB_OUTPUT
+          echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+
+      # 优化：使用上一步找到的精确路径和名称来上传
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         with:
-          # 从 'make' 命令的输出中智能查找生成的安装包路径
-          asset_path: ./out/make/**/*
-          # 获取资产的内容类型
+          asset_path: ${{ steps.get_artifact_info.outputs.ARTIFACT_PATH }}
+          asset_name: ${{ steps.get_artifact_info.outputs.ARTIFACT_NAME }}
           asset_content_type: application/octet-stream
-          # 构造一个清晰的资产名称，例如: RemotePowerTool-v1.0.1-windows.exe
-          asset_name: ${{ github.event.repository.name }}-${{ github.ref_name }}-${{ matrix.os }}.zip
-          # 这是上传的目标地址，由GitHub在创建Release时自动提供
           upload_url: ${{ github.event.release.upload_url }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
