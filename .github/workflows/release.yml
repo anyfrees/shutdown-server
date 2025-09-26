@@ -1,37 +1,27 @@
 name: Build & Release Electron App
 
-# 触发条件：仅当您在GitHub上手动创建一个新的 "Release" 时，此工作流才会运行。
 on:
   release:
     types: [created]
 
 jobs:
-  build-and-release:
-    # 使用矩阵策略，同时在 Windows, macOS, 和 Linux 三个平台上运行
+  # 第一步：在各个平台上构建应用
+  build:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-
-    # 指定运行环境
     runs-on: ${{ matrix.os }}
 
-    # 关键：为工作流授予写入权限，以便上传产物到Release页面
-    permissions:
-      contents: write
-
     steps:
-      # 第1步：检出您的代码
       - name: Check out git repository
         uses: actions/checkout@v4
 
-      # 第2步：设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
 
-      # 第3步：安装依赖（针对不同平台）
       - name: Install dependencies on Linux
         if: runner.os == 'Linux'
         run: |
@@ -43,44 +33,40 @@ jobs:
         if: runner.os != 'Linux'
         run: npm ci
 
-      # 第4步：执行打包和构建命令
       - name: Build distributable
         run: npm run make
+
+      - name: List build artifacts for debugging
+        run: ls -R ./out/make
       
-      # 第5步：调试步骤，列出打包后的产物
-      - name: List build artifacts
-        if: always()
-        run: ls -R ./out
-
-      # 第6步：智能查找不同平台生成的安装包路径和名称
-      - name: Get Artifact Info
-        id: get_artifact_info
-        shell: bash
-        run: |
-          ARTIFACT_PATH=""
-          ARTIFACT_NAME=""
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ARTIFACT_PATH=$(find ./out/make -name "*.exe" | head -n 1)
-            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-windows-setup.exe"
-          fi
-          if [[ "${{ runner.os }}" == "macOS" ]]; then
-            ARTIFACT_PATH=$(find ./out/make -name "*.zip" | head -n 1)
-            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-macos.zip"
-          fi
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            ARTIFACT_PATH=$(find ./out/make -name "*.deb" | head -n 1)
-            ARTIFACT_NAME="${{ github.event.repository.name }}-${{ github.ref_name }}-linux.deb"
-          fi
-          echo "ARTIFACT_PATH=${ARTIFACT_PATH}" >> $GITHUB_OUTPUT
-          echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
-
-      # 第7步：上传构建好的安装包到 Release
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          asset_path: ${{ steps.get_artifact_info.outputs.ARTIFACT_PATH }}
-          asset_name: ${{ steps.get_artifact_info.outputs.ARTIFACT_NAME }}
-          asset_content_type: application/octet-stream
-          upload_url: ${{ github.event.release.upload_url }}
+          name: ${{ matrix.os }}-build
+          path: ./out/make/**/*
+
+  # 第二步：等待所有构建成功后，统一发布
+  release:
+    # 依赖于 build 任务成功完成
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 必须有写入权限来创建Release和上传附件
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts # 将所有平台的产物下载到 artifacts 文件夹
+
+      - name: List downloaded artifacts for debugging
+        run: ls -R ./artifacts
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          # 从下载的附件中查找所有平台的文件并上传
+          # 这会自动处理 .exe, .zip, .deb, .dmg 等所有文件
+          files: ./artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
