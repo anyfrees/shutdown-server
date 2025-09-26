@@ -1,27 +1,37 @@
 name: Build & Release Electron App
 
+# 触发条件：仅当您在GitHub上手动创建一个新的 "Release" 时，此工作流才会运行。
 on:
   release:
     types: [created]
 
 jobs:
   build-and-release:
+    # 使用矩阵策略，同时在 Windows, macOS, 和 Linux 三个平台上运行
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
+    # 指定运行环境
     runs-on: ${{ matrix.os }}
 
+    # 关键：为工作流授予写入权限，以便上传产物到Release页面
+    permissions:
+      contents: write
+
     steps:
+      # 第1步：检出您的代码
       - name: Check out git repository
         uses: actions/checkout@v4
 
+      # 第2步：设置 Node.js 环境
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
-      
+
+      # 第3步：安装依赖（针对不同平台）
       - name: Install dependencies on Linux
         if: runner.os == 'Linux'
         run: |
@@ -33,15 +43,16 @@ jobs:
         if: runner.os != 'Linux'
         run: npm ci
 
+      # 第4步：执行打包和构建命令
       - name: Build distributable
         run: npm run make
       
-      # 新增：调试步骤，列出打包后的产物，方便排查问题
+      # 第5步：调试步骤，列出打包后的产物
       - name: List build artifacts
-        if: always() # 即使上一步失败也运行，以便我们看到部分产物
+        if: always()
         run: ls -R ./out
 
-      # 优化：智能查找不同平台生成的安装包路径和名称
+      # 第6步：智能查找不同平台生成的安装包路径和名称
       - name: Get Artifact Info
         id: get_artifact_info
         shell: bash
@@ -63,7 +74,7 @@ jobs:
           echo "ARTIFACT_PATH=${ARTIFACT_PATH}" >> $GITHUB_OUTPUT
           echo "ARTIFACT_NAME=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
 
-      # 优化：使用上一步找到的精确路径和名称来上传
+      # 第7步：上传构建好的安装包到 Release
       - name: Upload Release Asset
         uses: actions/upload-release-asset@v1
         with:
